@@ -10,6 +10,22 @@
     </div>
 
     <div class="container">
+      <!-- Breadcrumb -->
+      <nav v-if="destPref && !isLoading" class="breadcrumb-nav" aria-label="パンくずリスト">
+        <router-link to="/" class="bc-link">ホーム</router-link>
+        <span class="bc-sep">›</span>
+        <router-link :to="`/search?mode=dest&region=${destPref.regionId}`" class="bc-link">{{ regionName }}</router-link>
+        <span class="bc-sep">›</span>
+        <template v-if="filterArea !== 'all'">
+          <button class="bc-link bc-btn" @click="filterArea = 'all'">{{ destPref.name }}</button>
+          <span class="bc-sep">›</span>
+          <span class="bc-current">{{ filterArea }}</span>
+        </template>
+        <template v-else>
+          <span class="bc-current">{{ destPref.name }}</span>
+        </template>
+      </nav>
+
       <!-- Transport summary bar (package flow) -->
       <div v-if="store.draft.mode === 'package' && store.draft.selectedTransport" class="transport-bar">
         <span class="t-icon">{{ store.draft.selectedTransport.type === 'flight' ? '✈️' : store.draft.selectedTransport.type === 'shinkansen' ? '🚄' : '🚌' }}</span>
@@ -100,7 +116,12 @@
 
         <!-- Hotel Cards -->
         <div class="hotel-cards">
-          <p class="result-count">{{ filteredHotels.length }}件の宿泊施設</p>
+          <p class="result-count">
+            {{ filteredHotels.length }}件の宿泊施設
+            <span v-if="!isLoading && filteredHotels.length > 0">
+              （{{ (currentPage - 1) * PAGE_SIZE + 1 }}〜{{ Math.min(currentPage * PAGE_SIZE, filteredHotels.length) }}件表示）
+            </span>
+          </p>
 
           <div v-if="filteredHotels.length === 0 && !isLoading" class="empty-state card">
             <p>条件に合う宿泊施設が見つかりませんでした。</p>
@@ -108,7 +129,7 @@
           </div>
 
           <div
-            v-for="hotel in filteredHotels"
+            v-for="hotel in pagedHotels"
             :key="hotel.id"
             class="hotel-card card"
           >
@@ -135,6 +156,30 @@
               </div>
             </div>
           </div>
+
+          <!-- Pagination -->
+          <div v-if="totalPages > 1" class="pagination">
+            <button
+              class="page-btn page-nav"
+              :disabled="currentPage <= 1"
+              @click="currentPage--; scrollToTop()"
+            >‹ 前へ</button>
+
+            <template v-for="(p, i) in pageNumbers" :key="p">
+              <span v-if="i > 0 && pageNumbers[i-1] + 1 < p" class="page-ellipsis">…</span>
+              <button
+                class="page-btn"
+                :class="{ active: p === currentPage }"
+                @click="currentPage = p; scrollToTop()"
+              >{{ p }}</button>
+            </template>
+
+            <button
+              class="page-btn page-nav"
+              :disabled="currentPage >= totalPages"
+              @click="currentPage++; scrollToTop()"
+            >次へ ›</button>
+          </div>
         </div>
       </div>
     </div>
@@ -142,9 +187,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { store } from '../store/index.js'
-import { getPrefById } from '../data/prefectures.js'
+import { REGIONS, getPrefById } from '../data/prefectures.js'
 import { getHotelsByPref } from '../data/hotels.js'
 
 const isLoading = ref(true)
@@ -231,6 +276,34 @@ function resetFilters() {
   filterStars.value = 0
   filterAmenities.value = []
   filterArea.value = 'all'
+}
+
+// ── Pagination ──
+const PAGE_SIZE = 10
+const currentPage = ref(1)
+
+watch(filteredHotels, () => { currentPage.value = 1 })
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredHotels.value.length / PAGE_SIZE)))
+
+const pagedHotels = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return filteredHotels.value.slice(start, start + PAGE_SIZE)
+})
+
+const pageNumbers = computed(() => {
+  const total = totalPages.value
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const cur = currentPage.value
+  const set = new Set([1, total, cur - 1, cur, cur + 1].filter(p => p >= 1 && p <= total))
+  return [...set].sort((a, b) => a - b)
+})
+
+// ── Breadcrumb ──
+const regionName = computed(() => destPref.value ? REGIONS[destPref.value.regionId]?.name : '')
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function typeLabel(t) {
@@ -393,6 +466,68 @@ function typeColor(t) {
 .detail-btn { padding: 8px 18px; font-size: 13px; }
 
 .empty-state { padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+/* ── Breadcrumb ── */
+.breadcrumb-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 13px;
+  padding: 8px 0;
+  margin-bottom: 16px;
+  color: var(--text-sub);
+}
+.bc-link {
+  color: var(--primary-dark);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--transition);
+}
+.bc-link:hover { color: var(--primary); text-decoration: underline; }
+.bc-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+.bc-sep { color: #94a3b8; margin: 0 2px; }
+.bc-current { font-weight: 700; color: var(--text); }
+
+/* ── Pagination ── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+.page-btn {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.page-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 700;
+}
+.page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.page-nav { padding: 0 14px; }
+.page-ellipsis { color: var(--text-sub); font-size: 14px; padding: 0 2px; line-height: 38px; }
 
 @media (max-width: 768px) {
   .list-layout { grid-template-columns: 1fr; }

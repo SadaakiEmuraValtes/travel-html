@@ -7,13 +7,17 @@
       </div>
 
       <!-- Breadcrumb -->
-      <div v-if="selectedPref" class="breadcrumb">
-        <span>{{ REGIONS[selectedPref.regionId].name }}</span>
+      <nav v-if="selectedPref" class="breadcrumb" aria-label="パンくずリスト">
+        <router-link to="/" class="bc-home">ホーム</router-link>
+        <span class="sep">›</span>
+        <button class="bc-region" @click="jumpToRegion(selectedPref.regionId)">
+          {{ REGIONS[selectedPref.regionId].name }}
+        </button>
         <span class="sep">›</span>
         <span class="sel">{{ selectedPref.name }}</span>
         <span v-if="selectedArea" class="sep">›</span>
         <span v-if="selectedArea" class="sel">{{ selectedArea }}</span>
-      </div>
+      </nav>
 
       <!-- View tabs -->
       <div class="view-tabs">
@@ -156,6 +160,11 @@ function toggleRegion(id) {
   else openRegions.value.add(id)
 }
 
+function jumpToRegion(regionId) {
+  viewTab.value = 'list'
+  openRegions.value.add(regionId)
+}
+
 function confirmSelection() {
   if (!selectedPref.value) return
   if (mode.value === 'origin') {
@@ -197,6 +206,23 @@ function goBack() {
 }
 .sep { color: #93c5fd; }
 .sel { font-weight: 600; }
+.bc-home {
+  color: var(--primary-dark);
+  font-weight: 500;
+  text-decoration: none;
+}
+.bc-home:hover { text-decoration: underline; }
+.bc-region {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--primary-dark);
+  font-weight: 500;
+}
+.bc-region:hover { text-decoration: underline; color: var(--primary); }
 
 .view-tabs {
   display: flex;
