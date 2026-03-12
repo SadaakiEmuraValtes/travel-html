@@ -48,6 +48,30 @@
             <p>📍 {{ pref?.name }}県 / {{ hotel.area }}エリア</p>
             <div class="kana">{{ pref?.kana }}</div>
           </section>
+
+          <!-- Review section -->
+          <section v-if="canReview" class="section-card card review-section">
+            <h2>宿泊レビュー</h2>
+
+            <div v-if="myReview">
+              <p class="review-done">✅ レビュー投稿済み</p>
+              <canvas ref="myRadarCanvas" width="240" height="240" class="radar-canvas"></canvas>
+              <p class="review-comment">{{ myReview.comment }}</p>
+            </div>
+
+            <div v-else class="review-form">
+              <p class="review-hint">この宿泊施設の評価を投稿してください</p>
+              <div v-for="criterion in CRITERIA" :key="criterion" class="criterion-row">
+                <span class="criterion-label">{{ criterion }}</span>
+                <div class="star-select">
+                  <button v-for="s in 5" :key="s" class="star-btn" :class="{ filled: reviewScores[criterion] >= s }" @click="reviewScores[criterion] = s">★</button>
+                </div>
+                <span class="score-val">{{ reviewScores[criterion] || '-' }}</span>
+              </div>
+              <textarea v-model="reviewComment" placeholder="コメント（任意）" class="review-textarea" rows="3"></textarea>
+              <button class="btn btn-primary" :disabled="!canSubmitReview" @click="submitReview">レビューを投稿</button>
+            </div>
+          </section>
         </div>
 
         <!-- Right: booking panel -->
@@ -56,25 +80,83 @@
 
           <div class="panel-row">
             <label>チェックイン</label>
-            <input type="date" v-model="checkin" :min="today" class="input" />
+            <input type="date" v-model="checkin" :min="today" class="input" style="font-family: inherit;" />
           </div>
           <div class="panel-row">
             <label>チェックアウト</label>
-            <input type="date" v-model="checkout" :min="checkin || today" class="input" />
+            <input type="date" v-model="checkout" :min="checkin || today" class="input" style="font-family: inherit;" />
           </div>
+
+          <!-- Adults -->
           <div class="panel-row">
-            <label>人数</label>
-            <div class="guests-ctrl">
-              <button @click="changeGuests(-1)">−</button>
-              <span>{{ guests }}名</span>
-              <button @click="changeGuests(1)">+</button>
+            <label>大人</label>
+            <div class="qty-row">
+              <div class="qty-ctrl">
+                <button class="qty-btn" :disabled="adults <= 1" @click="adults > 1 && adults--">−</button>
+                <span class="qty-val">{{ adults }}</span>
+                <button class="qty-btn" :disabled="adults >= 8" @click="adults < 8 && adults++">+</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Children -->
+          <div class="panel-row">
+            <label>子供</label>
+            <div class="qty-row">
+              <div class="qty-ctrl">
+                <button class="qty-btn" :disabled="children <= 0" @click="children > 0 && children--">−</button>
+                <span class="qty-val">{{ children }}</span>
+                <button class="qty-btn" :disabled="children >= 6" @click="children < 6 && children++">+</button>
+              </div>
+            </div>
+          </div>
+
+          <hr class="panel-divider" />
+
+          <!-- Rep name -->
+          <div class="panel-row">
+            <label>代表者氏名</label>
+            <input type="text" v-model="repName" class="input" placeholder="山田 太郎" />
+          </div>
+
+          <!-- Rep email -->
+          <div class="panel-row">
+            <label>代表者メールアドレス</label>
+            <input type="email" v-model="repEmail" class="input" placeholder="example@email.com" />
+          </div>
+
+          <!-- Car -->
+          <div class="panel-row">
+            <label>お車でお越しですか？</label>
+            <div class="radio-row">
+              <label class="radio-opt"><input type="radio" v-model="hasCar" :value="true" /> はい</label>
+              <label class="radio-opt"><input type="radio" v-model="hasCar" :value="false" /> いいえ</label>
+            </div>
+          </div>
+
+          <hr class="panel-divider" />
+
+          <!-- Special request -->
+          <div class="panel-row">
+            <label>特別リクエスト（任意）</label>
+            <textarea v-model="specialRequest" class="input" rows="3" placeholder="アレルギー・記念日など"></textarea>
+          </div>
+
+          <hr class="panel-divider" />
+
+          <!-- Payment -->
+          <div class="panel-row">
+            <label>お支払い方法</label>
+            <div class="radio-col">
+              <label class="radio-opt"><input type="radio" v-model="paymentMethod" value="card" /> クレジットカード（申込時決済）</label>
+              <label class="radio-opt"><input type="radio" v-model="paymentMethod" value="local" /> 現地払い</label>
             </div>
           </div>
 
           <div v-if="nights > 0" class="price-breakdown">
             <div class="pb-row">
               <span>宿泊料金</span>
-              <span>¥{{ hotel.pricePerNight.toLocaleString() }} × {{ nights }}泊 × {{ guests }}名</span>
+              <span>¥{{ hotel.pricePerNight.toLocaleString() }} × {{ nights }}泊 × {{ adults }}名</span>
             </div>
             <div class="pb-row hotel-total">
               <span>宿泊合計</span>
@@ -90,7 +172,7 @@
                 </div>
               </div>
               <div class="pb-row">
-                <span>交通費 ({{ store.draft.tripType === 'roundtrip' ? '往復' : '片道' }} × {{ guests }}名)</span>
+                <span>交通費 ({{ store.draft.tripType === 'roundtrip' ? '往復' : '片道' }} × {{ adults }}名)</span>
                 <span>¥{{ transportTotal.toLocaleString() }}</span>
               </div>
             </template>
@@ -126,9 +208,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, reactive, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { store, isLoggedIn } from '../store/index.js'
+import { store, isLoggedIn, currentUser, addReview, getUserReview, getMyBookings } from '../store/index.js'
 import { getHotelById } from '../data/hotels.js'
 import { getPrefById } from '../data/prefectures.js'
 import { formatDuration } from '../data/transport.js'
@@ -144,7 +226,13 @@ const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('sv-SE')
 
 const checkin  = ref(store.draft.checkin  || today)
 const checkout = ref(store.draft.checkout || tomorrow)
-const guests   = ref(store.draft.guests   || 2)
+const adults   = ref(store.draft.guests   || 2)
+const children = ref(0)
+const repName  = ref(currentUser()?.name  || '')
+const repEmail = ref(currentUser()?.email || '')
+const hasCar   = ref(false)
+const specialRequest = ref('')
+const paymentMethod  = ref('card')
 
 const nights = computed(() => {
   if (!checkin.value || !checkout.value) return 0
@@ -152,11 +240,11 @@ const nights = computed(() => {
   return d > 0 ? Math.round(d) : 0
 })
 
-const hotelTotal = computed(() => hotel.value ? hotel.value.pricePerNight * nights.value * guests.value : 0)
+const hotelTotal = computed(() => hotel.value ? hotel.value.pricePerNight * nights.value * adults.value : 0)
 
 const transportTotal = computed(() => {
   if (!store.draft.selectedTransport) return 0
-  const base = store.draft.selectedTransport.price * guests.value
+  const base = store.draft.selectedTransport.price * adults.value
   return store.draft.tripType === 'roundtrip' ? base * 2 : base
 })
 
@@ -174,17 +262,125 @@ const transportLabel = computed(() => {
   return '🚌 バス・特急'
 })
 
-function changeGuests(d) {
-  const v = guests.value + d
-  if (v >= 1 && v <= 8) guests.value = v
-}
-
 function doBook() {
   store.draft.checkin      = checkin.value
   store.draft.checkout     = checkout.value
-  store.draft.guests       = guests.value
+  store.draft.guests       = adults.value
   store.draft.selectedHotelId = hotel.value.id
+  // Store extra fields on draft for ConfirmView
+  store.draft._extra = {
+    adults: adults.value,
+    children: children.value,
+    repName: repName.value,
+    repEmail: repEmail.value,
+    hasCar: hasCar.value,
+    specialRequest: specialRequest.value,
+    paymentMethod: paymentMethod.value,
+  }
   router.push('/confirm')
+}
+
+// ── Review ──
+const CRITERIA = ['清潔さ', '接客', '立地', '設備', 'コスパ']
+const reviewScores = reactive({ 清潔さ: 0, 接客: 0, 立地: 0, 設備: 0, コスパ: 0 })
+const reviewComment = ref('')
+const myRadarCanvas = ref(null)
+
+const canReview = computed(() => {
+  if (!isLoggedIn()) return false
+  const bookings = getMyBookings()
+  return bookings.some(b => b.hotelId === hotel.value?.id)
+})
+
+const myReview = computed(() => getUserReview(hotel.value?.id))
+
+const canSubmitReview = computed(() => CRITERIA.every(c => reviewScores[c] > 0))
+
+function submitReview() {
+  addReview(hotel.value.id, { ...reviewScores, comment: reviewComment.value })
+  nextTick(() => drawRadar(myRadarCanvas.value, myReview.value))
+}
+
+watch(myReview, (v) => { if (v) nextTick(() => drawRadar(myRadarCanvas.value, v)) })
+onMounted(() => { if (myReview.value) nextTick(() => drawRadar(myRadarCanvas.value, myReview.value)) })
+
+function drawRadar(canvas, scores) {
+  if (!canvas || !scores) return
+  const ctx = canvas.getContext('2d')
+  const W = canvas.width, H = canvas.height
+  const cx = W / 2, cy = H / 2
+  const R = Math.min(W, H) / 2 - 36
+  const criteria = ['清潔さ', '接客', '立地', '設備', 'コスパ']
+  const n = criteria.length
+  ctx.clearRect(0, 0, W, H)
+
+  // Draw grid circles
+  for (let ring = 1; ring <= 5; ring++) {
+    ctx.beginPath()
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI * i / n) - Math.PI / 2
+      const r = (R * ring) / 5
+      const x = cx + r * Math.cos(angle)
+      const y = cy + r * Math.sin(angle)
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+    }
+    ctx.closePath()
+    ctx.strokeStyle = '#e2e8f0'
+    ctx.lineWidth = 1
+    ctx.stroke()
+  }
+
+  // Draw axes
+  criteria.forEach((_, i) => {
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2
+    ctx.beginPath()
+    ctx.moveTo(cx, cy)
+    ctx.lineTo(cx + R * Math.cos(angle), cy + R * Math.sin(angle))
+    ctx.strokeStyle = '#e2e8f0'
+    ctx.lineWidth = 1
+    ctx.stroke()
+  })
+
+  // Draw data polygon
+  ctx.beginPath()
+  criteria.forEach((c, i) => {
+    const score = scores[c] || 0
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2
+    const r = (R * score) / 5
+    const x = cx + r * Math.cos(angle)
+    const y = cy + r * Math.sin(angle)
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+  })
+  ctx.closePath()
+  ctx.fillStyle = 'rgba(14,165,233,0.25)'
+  ctx.fill()
+  ctx.strokeStyle = '#0ea5e9'
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  // Draw dots
+  criteria.forEach((c, i) => {
+    const score = scores[c] || 0
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2
+    const r = (R * score) / 5
+    ctx.beginPath()
+    ctx.arc(cx + r * Math.cos(angle), cy + r * Math.sin(angle), 4, 0, Math.PI * 2)
+    ctx.fillStyle = '#0ea5e9'
+    ctx.fill()
+  })
+
+  // Draw labels
+  ctx.fillStyle = '#1e293b'
+  ctx.font = 'bold 11px -apple-system, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  criteria.forEach((c, i) => {
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2
+    const labelR = R + 22
+    const x = cx + labelR * Math.cos(angle)
+    const y = cy + labelR * Math.sin(angle)
+    ctx.fillText(c, x, y)
+  })
 }
 </script>
 
@@ -247,26 +443,31 @@ function doBook() {
   font-size: 14px;
   font-family: inherit;
   background: #f8fafc;
+  box-sizing: border-box;
 }
+textarea.input { resize: vertical; }
 
-.guests-ctrl {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+.panel-divider { border: none; border-top: 1px dashed var(--border); margin: 16px 0; }
+
+/* Qty buttons */
+.qty-row { display: flex; align-items: center; gap: 12px; }
+.qty-label { font-size: 14px; font-weight: 600; min-width: 40px; }
+.qty-ctrl { display: flex; align-items: center; gap: 8px; }
+.qty-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1.5px solid var(--border); background: #fff;
+  color: var(--text); font-size: 18px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; line-height: 1;
 }
-.guests-ctrl button {
-  width: 28px; height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: #fff;
-  font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
-}
-.guests-ctrl span { font-size: 15px; font-weight: 600; }
+.qty-btn:hover:not(:disabled) { background: var(--primary); color: #fff; border-color: var(--primary); }
+.qty-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.qty-val { font-size: 16px; font-weight: 700; min-width: 24px; text-align: center; }
+
+/* Radio */
+.radio-row, .radio-col { display: flex; gap: 16px; flex-wrap: wrap; }
+.radio-col { flex-direction: column; gap: 8px; }
+.radio-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 
 .price-breakdown {
   background: #f8fafc;
@@ -314,6 +515,20 @@ function doBook() {
 .book-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .disclaimer { font-size: 11px; color: var(--text-sub); text-align: center; margin-top: 12px; }
+
+/* Review section */
+.review-section { }
+.review-done { color: var(--accent); font-weight: 600; margin-bottom: 12px; }
+.radar-canvas { display: block; margin: 0 auto 12px; }
+.review-comment { font-size: 14px; color: var(--text-sub); font-style: italic; }
+.review-hint { font-size: 13px; color: var(--text-sub); margin-bottom: 16px; }
+.criterion-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.criterion-label { font-size: 13px; font-weight: 600; min-width: 44px; }
+.star-select { display: flex; gap: 2px; }
+.star-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: #d1d5db; padding: 0; line-height: 1; }
+.star-btn.filled { color: #f59e0b; }
+.score-val { font-size: 13px; font-weight: 700; min-width: 16px; color: var(--text-sub); }
+.review-textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical; margin: 12px 0; box-sizing: border-box; }
 
 @media (max-width: 900px) {
   .detail-body { grid-template-columns: 1fr; }

@@ -76,12 +76,28 @@
               <h2>利用者情報</h2>
               <div class="info-grid">
                 <div class="info-row">
-                  <span class="info-label">お名前</span>
-                  <span class="info-value">{{ user.name }}</span>
+                  <span class="info-label">代表者氏名</span>
+                  <span class="info-value">{{ extra.repName || user.name }}</span>
                 </div>
                 <div class="info-row">
                   <span class="info-label">メールアドレス</span>
-                  <span class="info-value">{{ user.email }}</span>
+                  <span class="info-value">{{ extra.repEmail || user.email }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">大人 / 子供</span>
+                  <span class="info-value">{{ extra.adults || store.draft.guests }}名 / {{ extra.children || 0 }}名</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">お車でのご来館</span>
+                  <span class="info-value">{{ extra.hasCar ? 'はい' : 'いいえ' }}</span>
+                </div>
+                <div v-if="extra.specialRequest" class="info-row">
+                  <span class="info-label">特別リクエスト</span>
+                  <span class="info-value">{{ extra.specialRequest }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">お支払い方法</span>
+                  <span class="info-value">{{ extra.paymentMethod === 'card' ? 'クレジットカード' : '現地払い' }}</span>
                 </div>
               </div>
             </section>
@@ -146,6 +162,7 @@ const router = useRouter()
 const hotel     = computed(() => store.draft.selectedHotelId ? getHotelById(store.draft.selectedHotelId) : null)
 const user      = computed(() => currentUser())
 const pref      = computed(() => hotel.value ? getPrefById(hotel.value.prefId) : null)
+const extra     = computed(() => store.draft._extra || {})
 const destPref  = computed(() => store.draft.destPrefId   ? getPrefById(store.draft.destPrefId)   : null)
 const originPref = computed(() => store.draft.originPrefId ? getPrefById(store.draft.originPrefId) : null)
 
@@ -197,6 +214,7 @@ function doConfirm() {
     destPrefName: destPref.value?.name,
     transportTotal: transportTotal.value,
     grandTotal: grandTotal.value,
+    ...(store.draft._extra || {}),
   }
 
   addBooking(booking)

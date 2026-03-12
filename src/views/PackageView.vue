@@ -244,8 +244,8 @@ async function doSearch() {
   selectedOutSlot.value = null
   selectedInSlot.value = null
 
-  // Random delay 3000-7000ms
-  const delay = 3000 + Math.random() * 4000
+  // Random delay 2000-5000ms
+  const delay = 2000 + Math.random() * 3000
   await new Promise(r => setTimeout(r, delay))
 
   transportOptions.value = getTransportOptions(store.draft.originPrefId, store.draft.destPrefId)
@@ -342,9 +342,12 @@ function goToHotels() {
   border-radius: 50%;
   border: 1px solid var(--border);
   background: #fff;
+  color: var(--text);
   font-size: 16px;
   display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
 }
+.guests-ctrl button:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
 .guests-ctrl span { font-size: 14px; font-weight: 600; min-width: 30px; text-align: center; }
 
 .radio-group { display: flex; gap: 16px; flex-wrap: wrap; }

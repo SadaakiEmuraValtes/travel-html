@@ -29,21 +29,10 @@
       <div v-show="viewTab === 'map'" class="map-tab">
         <p class="map-hint">都道府県をクリックして選択してください</p>
         <div class="map-scroll">
-          <div class="japan-map">
-            <div
-              v-for="pref in PREFECTURES"
-              :key="pref.id"
-              class="map-cell"
-              :class="{ selected: selectedPref && selectedPref.id === pref.id }"
-              :style="{
-                left: pref.mapCol * 42 + 'px',
-                top: pref.mapRow * 42 + 'px',
-                background: selectedPref && selectedPref.id === pref.id ? '#0ea5e9' : REGIONS[pref.regionId].color + 'cc',
-              }"
-              :title="pref.name"
-              @click="selectPref(pref)"
-            >
-              {{ pref.name.length <= 3 ? pref.name : pref.name.slice(0, 3) }}
+          <div class="canvas-wrap">
+            <canvas ref="mapCanvas" width="504" height="798" class="japan-canvas" @click="onCanvasClick" @mousemove="onCanvasMove" @mouseleave="onCanvasLeave"></canvas>
+            <div v-if="hoveredPref" class="map-tooltip" :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }">
+              {{ hoveredPref.name }}
             </div>
           </div>
         </div>
@@ -118,7 +107,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { store } from '../store/index.js'
 import { REGIONS, PREFECTURES, getPrefById, getPrefsByRegion } from '../data/prefectures.js'
@@ -133,6 +122,105 @@ const openRegions = ref(new Set())
 const selectedPref = ref(null)
 const selectedArea = ref(null)
 
+// Canvas map
+const mapCanvas = ref(null)
+const hoveredPref = ref(null)
+const tooltipX = ref(0)
+const tooltipY = ref(0)
+
+const CELL = 40
+const GAP = 2
+const STEP = CELL + GAP  // 42
+
+function drawMap() {
+  const canvas = mapCanvas.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  PREFECTURES.forEach(pref => {
+    const x = pref.mapCol * STEP
+    const y = pref.mapRow * STEP
+    const isSelected = selectedPref.value && selectedPref.value.id === pref.id
+    const isHovered = hoveredPref.value && hoveredPref.value.id === pref.id
+    const regionColor = REGIONS[pref.regionId].color
+
+    // Cell background
+    ctx.fillStyle = isSelected ? '#0ea5e9' : isHovered ? regionColor + 'ff' : regionColor + 'cc'
+    ctx.beginPath()
+    roundRect(ctx, x, y, CELL, CELL, 4)
+    ctx.fill()
+
+    // Selected border
+    if (isSelected) {
+      ctx.strokeStyle = '#fff'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      roundRect(ctx, x + 1, y + 1, CELL - 2, CELL - 2, 3)
+      ctx.stroke()
+    }
+
+    // Text
+    ctx.fillStyle = '#fff'
+    ctx.font = `bold 9px -apple-system, Hiragino Sans, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const label = pref.name.length <= 3 ? pref.name : pref.name.slice(0, 3)
+    ctx.fillText(label, x + CELL / 2, y + CELL / 2)
+  })
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+function getPrefAtPos(x, y) {
+  return PREFECTURES.find(pref => {
+    const px = pref.mapCol * STEP
+    const py = pref.mapRow * STEP
+    return x >= px && x <= px + CELL && y >= py && y <= py + CELL
+  })
+}
+
+function onCanvasClick(e) {
+  const rect = mapCanvas.value.getBoundingClientRect()
+  const scaleX = mapCanvas.value.width / rect.width
+  const scaleY = mapCanvas.value.height / rect.height
+  const x = (e.clientX - rect.left) * scaleX
+  const y = (e.clientY - rect.top) * scaleY
+  const pref = getPrefAtPos(x, y)
+  if (pref) selectPref(pref)
+}
+
+function onCanvasMove(e) {
+  const rect = mapCanvas.value.getBoundingClientRect()
+  const scaleX = mapCanvas.value.width / rect.width
+  const scaleY = mapCanvas.value.height / rect.height
+  const x = (e.clientX - rect.left) * scaleX
+  const y = (e.clientY - rect.top) * scaleY
+  const pref = getPrefAtPos(x, y)
+  hoveredPref.value = pref || null
+  if (pref) {
+    tooltipX.value = e.clientX - rect.left + 12
+    tooltipY.value = e.clientY - rect.top - 28
+  }
+  drawMap()
+}
+
+function onCanvasLeave() {
+  hoveredPref.value = null
+  drawMap()
+}
+
 onMounted(() => {
   // Preselect from current draft
   const prefId = mode.value === 'origin' ? store.draft.originPrefId : store.draft.destPrefId
@@ -146,7 +234,10 @@ onMounted(() => {
     openRegions.value.add(rid)
     viewTab.value = 'list'
   }
+  nextTick(() => drawMap())
 })
+
+watch(selectedPref, () => drawMap())
 
 function selectPref(pref) {
   selectedPref.value = pref
@@ -244,39 +335,17 @@ function goBack() {
 .map-hint { font-size: 12px; color: var(--text-sub); margin-bottom: 12px; }
 .map-scroll { overflow-x: auto; padding-bottom: 12px; }
 
-.japan-map {
+.canvas-wrap {
   position: relative;
-  width: 504px;   /* 12 * 42 */
-  height: 798px;  /* 19 * 42 */
+  display: inline-block;
+  width: 504px;
   flex-shrink: 0;
 }
-
-.map-cell {
-  position: absolute;
-  width: 38px;
-  height: 38px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 700;
-  color: #fff;
-  cursor: pointer;
-  transition: transform var(--transition), box-shadow var(--transition);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.1;
-  text-align: center;
-  padding: 2px;
-}
-.map-cell:hover { transform: scale(1.15); box-shadow: 0 4px 12px rgba(0,0,0,0.25); z-index: 2; }
-.map-cell.selected {
-  transform: scale(1.15);
-  box-shadow: 0 4px 16px rgba(14,165,233,0.5);
-  z-index: 3;
-  outline: 3px solid #fff;
+.japan-canvas { cursor: pointer; max-width: 100%; display: block; }
+.map-tooltip {
+  position: absolute; background: #1e293b; color: #fff;
+  padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  pointer-events: none; white-space: nowrap; z-index: 10;
 }
 
 .area-panel {

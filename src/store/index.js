@@ -4,15 +4,26 @@ import { DEFAULT_USERS } from '../data/users.js'
 const STORAGE_KEY = 'japantravel_v1'
 
 function loadSaved() { try { return JSON.parse(sessionStorage.getItem(STORAGE_KEY)) } catch { return null } }
-function save(s) { try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ currentUserId: s.currentUserId, userBookings: s.userBookings, lastCompletedBookingId: s.lastCompletedBookingId })) } catch {} }
+function save(s) { try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ currentUserId: s.currentUserId, userBookings: s.userBookings, lastCompletedBookingId: s.lastCompletedBookingId, hotelReviews: s.hotelReviews })) } catch {} }
+
+function initUserBookings() {
+  const bookings = {}
+  DEFAULT_USERS.forEach(user => {
+    if (user.presetBookings) {
+      bookings[user.id] = user.presetBookings.map(b => ({ ...b, userId: user.id }))
+    }
+  })
+  return bookings
+}
 
 const saved = loadSaved()
 
 export const store = reactive({
   currentUserId: saved?.currentUserId ?? null,
   users: DEFAULT_USERS,
-  userBookings: saved?.userBookings ?? {},   // { userId: booking[] }
+  userBookings: saved?.userBookings ?? initUserBookings(),   // { userId: booking[] }
   lastCompletedBookingId: saved?.lastCompletedBookingId ?? null,
+  hotelReviews: saved?.hotelReviews ?? {},  // { hotelId: { userId: reviewData } }
 
   // Booking draft (not persisted)
   draft: {
@@ -68,4 +79,24 @@ export function resetDraft() {
     originPrefId: null, tripType: 'roundtrip', transportType: 'any',
     selectedTransport: null, selectedHotelId: null,
   })
+}
+
+export function addReview(hotelId, reviewData) {
+  if (!store.currentUserId) return false
+  if (!store.hotelReviews[hotelId]) store.hotelReviews[hotelId] = {}
+  store.hotelReviews[hotelId][store.currentUserId] = {
+    ...reviewData,
+    userId: store.currentUserId,
+    createdAt: new Date().toISOString()
+  }
+  return true
+}
+
+export function getHotelReviews(hotelId) {
+  return Object.values(store.hotelReviews[hotelId] || {})
+}
+
+export function getUserReview(hotelId) {
+  if (!store.currentUserId) return null
+  return store.hotelReviews[hotelId]?.[store.currentUserId] || null
 }

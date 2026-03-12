@@ -126,7 +126,10 @@ export function generateHotel(prefId, areaIdx, areaName, hotelIndex) {
   const descList = DESCRIPTIONS[type]
   const description = descList[Math.floor(rand() * descList.length)]
 
-  return { id, prefId, areaIdx, area: areaName, name, type, stars, pricePerNight, amenities, description, emoji, rating }
+  const adRand = makeRand(prefId * 999 + areaIdx * 77 + hotelIndex + 12345)
+  const isAd = adRand() < 0.05
+
+  return { id, prefId, areaIdx, area: areaName, name, type, stars, pricePerNight, amenities, description, emoji, rating, isAd }
 }
 
 export function getHotelsByPrefArea(prefId, areaIdx, areaName) {

@@ -62,52 +62,87 @@
         <aside class="filters card">
           <h3>絞り込み</h3>
 
+          <!-- Area -->
           <div class="filter-group">
-            <div class="filter-label">エリア</div>
-            <label class="filter-option">
-              <input type="radio" v-model="filterArea" value="all" />
-              すべて
-            </label>
-            <label v-for="area in prefAreas" :key="area" class="filter-option">
-              <input type="radio" v-model="filterArea" :value="area" />
-              {{ area }}
-            </label>
+            <button class="filter-section-head" @click="toggleSection('area')">
+              <span class="filter-label-text">エリア</span>
+              <span class="fsarrow">{{ openSections.has('area') ? '▲' : '▼' }}</span>
+            </button>
+            <div v-show="openSections.has('area')" class="filter-body">
+              <label class="filter-option">
+                <input type="radio" v-model="filterArea" value="all" />
+                すべて
+              </label>
+              <label v-for="area in prefAreas" :key="area" class="filter-option">
+                <input type="radio" v-model="filterArea" :value="area" />
+                {{ area }}
+              </label>
+            </div>
           </div>
 
+          <!-- Type -->
           <div class="filter-group">
-            <div class="filter-label">宿泊タイプ</div>
-            <label v-for="t in typeOptions" :key="t.value" class="filter-option">
-              <input type="radio" v-model="filterType" :value="t.value" />
-              {{ t.label }}
-            </label>
+            <button class="filter-section-head" @click="toggleSection('type')">
+              <span class="filter-label-text">宿泊タイプ</span>
+              <span class="fsarrow">{{ openSections.has('type') ? '▲' : '▼' }}</span>
+            </button>
+            <div v-show="openSections.has('type')" class="filter-body">
+              <label v-for="t in typeOptions" :key="t.value" class="filter-option">
+                <input type="radio" v-model="filterType" :value="t.value" />
+                {{ t.label }}
+              </label>
+            </div>
           </div>
 
+          <!-- Price (dual range slider) -->
           <div class="filter-group">
-            <div class="filter-label">価格帯（1泊）</div>
-            <label v-for="p in priceOptions" :key="p.value" class="filter-option">
-              <input type="radio" v-model="filterPrice" :value="p.value" />
-              {{ p.label }}
-            </label>
+            <button class="filter-section-head" @click="toggleSection('price')">
+              <span class="filter-label-text">価格帯（1泊）</span>
+              <span class="fsarrow">{{ openSections.has('price') ? '▲' : '▼' }}</span>
+            </button>
+            <div v-show="openSections.has('price')" class="filter-body">
+              <div class="price-range-display">
+                <span>¥{{ priceMin.toLocaleString() }}</span>
+                <span>〜</span>
+                <span>¥{{ priceMax.toLocaleString() }}</span>
+              </div>
+              <div class="range-wrap">
+                <input type="range" v-model.number="priceMin" :min="0" :max="100000" :step="1000" class="range-slider" @input="onPriceMinInput" />
+                <input type="range" v-model.number="priceMax" :min="0" :max="100000" :step="1000" class="range-slider" @input="onPriceMaxInput" />
+              </div>
+            </div>
           </div>
 
+          <!-- Stars -->
           <div class="filter-group">
-            <div class="filter-label">星評価</div>
-            <label v-for="s in starOptions" :key="s.value" class="filter-option">
-              <input type="radio" v-model="filterStars" :value="s.value" />
-              {{ s.label }}
-            </label>
+            <button class="filter-section-head" @click="toggleSection('stars')">
+              <span class="filter-label-text">星評価</span>
+              <span class="fsarrow">{{ openSections.has('stars') ? '▲' : '▼' }}</span>
+            </button>
+            <div v-show="openSections.has('stars')" class="filter-body">
+              <label v-for="s in starOptions" :key="s.value" class="filter-option">
+                <input type="radio" v-model="filterStars" :value="s.value" />
+                {{ s.label }}
+              </label>
+            </div>
           </div>
 
+          <!-- Amenity -->
           <div class="filter-group">
-            <div class="filter-label">設備・サービス</div>
-            <div class="amenity-chips">
-              <button
-                v-for="am in FILTER_AMENITIES"
-                :key="am"
-                class="amenity-chip"
-                :class="{ active: filterAmenities.includes(am) }"
-                @click="toggleAmenity(am)"
-              >{{ am }}</button>
+            <button class="filter-section-head" @click="toggleSection('amenity')">
+              <span class="filter-label-text">設備・サービス</span>
+              <span class="fsarrow">{{ openSections.has('amenity') ? '▲' : '▼' }}</span>
+            </button>
+            <div v-show="openSections.has('amenity')" class="filter-body">
+              <div class="amenity-chips">
+                <button
+                  v-for="am in FILTER_AMENITIES"
+                  :key="am"
+                  class="amenity-chip"
+                  :class="{ active: filterAmenities.includes(am) }"
+                  @click="toggleAmenity(am)"
+                >{{ am }}</button>
+              </div>
             </div>
           </div>
 
@@ -119,7 +154,7 @@
           <p class="result-count">
             {{ filteredHotels.length }}件の宿泊施設
             <span v-if="!isLoading && filteredHotels.length > 0">
-              （{{ (currentPage - 1) * PAGE_SIZE + 1 }}〜{{ Math.min(currentPage * PAGE_SIZE, filteredHotels.length) }}件表示）
+              （{{ (currentPage - 1) * PAGE_SIZE + 1 }}〜{{ Math.min(currentPage * PAGE_SIZE, displayHotels.length) }}件表示）
             </span>
           </p>
 
@@ -130,15 +165,20 @@
 
           <div
             v-for="hotel in pagedHotels"
-            :key="hotel.id"
+            :key="hotel.isPr ? 'pr-' + hotel.id : hotel.id"
             class="hotel-card card"
+            :class="{ 'ad-card': hotel.isPr }"
           >
             <div class="hotel-img" :style="{ background: typeColor(hotel.type) }">
               <span class="hotel-emoji">{{ hotel.emoji }}</span>
               <span class="type-badge badge" :class="typeBadgeClass(hotel.type)">{{ typeLabel(hotel.type) }}</span>
+              <div v-if="hotel.isPr" class="pr-banner">広告</div>
             </div>
             <div class="hotel-body">
-              <div class="hotel-name">{{ hotel.name }}</div>
+              <div class="hotel-name">
+                {{ hotel.name }}
+                <span v-if="hotel.isPr" class="pr-label">[PR]</span>
+              </div>
               <div class="hotel-meta">
                 <span class="stars">{{ '★'.repeat(hotel.stars) }}</span>
                 <span class="rating">{{ hotel.rating }}</span>
@@ -196,7 +236,7 @@ const isLoading = ref(true)
 const loadingMsg = ref('宿泊施設を検索中...')
 
 onMounted(async () => {
-  const delay = 3000 + Math.random() * 7000
+  const delay = 2000 + Math.random() * 3000
   await new Promise(r => setTimeout(r, delay))
   isLoading.value = false
 })
@@ -220,11 +260,19 @@ const allHotels = computed(() => {
 
 // Filters
 const filterType      = ref('all')
-const filterPrice     = ref('all')
+const priceMin        = ref(0)
+const priceMax        = ref(100000)
 const filterStars     = ref(0)
 const filterAmenities = ref([])
 const filterArea      = ref('all')
 const sortBy          = ref('popular')
+
+// Accordion state
+const openSections = ref(new Set(['area', 'type', 'price', 'stars', 'amenity']))
+function toggleSection(key) {
+  if (openSections.value.has(key)) openSections.value.delete(key)
+  else openSections.value.add(key)
+}
 
 const FILTER_AMENITIES = ['温泉', '大浴場', '露天風呂', 'サウナ', 'プール', 'スパ', 'レストラン', '朝食付き', 'フィットネス', 'ペット可', '無料送迎', '駐車場']
 
@@ -234,17 +282,14 @@ const typeOptions = [
   { value: 'ryokan', label: '旅館' },
   { value: 'resort', label: 'リゾート' },
 ]
-const priceOptions = [
-  { value: 'all',    label: 'すべて' },
-  { value: 'budget', label: '〜10,000円' },
-  { value: 'mid',    label: '10,000〜30,000円' },
-  { value: 'luxury', label: '30,000円〜' },
-]
 const starOptions = [
   { value: 0, label: 'すべて' },
   { value: 3, label: '★★★以上' },
   { value: 4, label: '★★★★以上' },
 ]
+
+function onPriceMinInput() { if (priceMin.value > priceMax.value) priceMax.value = priceMin.value }
+function onPriceMaxInput() { if (priceMax.value < priceMin.value) priceMin.value = priceMax.value }
 
 function toggleAmenity(am) {
   const idx = filterAmenities.value.indexOf(am)
@@ -255,9 +300,9 @@ function toggleAmenity(am) {
 const filteredHotels = computed(() => {
   let list = allHotels.value
   if (filterType.value !== 'all') list = list.filter(h => h.type === filterType.value)
-  if (filterPrice.value === 'budget') list = list.filter(h => h.pricePerNight < 10000)
-  else if (filterPrice.value === 'mid') list = list.filter(h => h.pricePerNight >= 10000 && h.pricePerNight < 30000)
-  else if (filterPrice.value === 'luxury') list = list.filter(h => h.pricePerNight >= 30000)
+  if (priceMin.value > 0 || priceMax.value < 100000) {
+    list = list.filter(h => h.pricePerNight >= priceMin.value && h.pricePerNight <= priceMax.value)
+  }
   if (filterStars.value > 0) list = list.filter(h => h.stars >= filterStars.value)
   if (filterAmenities.value.length > 0) {
     list = list.filter(h => filterAmenities.value.every(am => h.amenities.includes(am)))
@@ -270,9 +315,20 @@ const filteredHotels = computed(() => {
   return list
 })
 
+// PR/Ad injection
+const displayHotels = computed(() => {
+  const list = filteredHotels.value
+  const adIdx = list.findIndex(h => h.isAd)
+  if (adIdx < 0) return list
+  const adHotel = list[adIdx]
+  const withoutAd = list.filter((_, i) => i !== adIdx)
+  return [{ ...adHotel, isPr: true }, ...withoutAd]
+})
+
 function resetFilters() {
   filterType.value = 'all'
-  filterPrice.value = 'all'
+  priceMin.value = 0
+  priceMax.value = 100000
   filterStars.value = 0
   filterAmenities.value = []
   filterArea.value = 'all'
@@ -284,11 +340,11 @@ const currentPage = ref(1)
 
 watch(filteredHotels, () => { currentPage.value = 1 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredHotels.value.length / PAGE_SIZE)))
+const totalPages = computed(() => Math.max(1, Math.ceil(displayHotels.value.length / PAGE_SIZE)))
 
 const pagedHotels = computed(() => {
   const start = (currentPage.value - 1) * PAGE_SIZE
-  return filteredHotels.value.slice(start, start + PAGE_SIZE)
+  return displayHotels.value.slice(start, start + PAGE_SIZE)
 })
 
 const pageNumbers = computed(() => {
@@ -391,11 +447,17 @@ function typeColor(t) {
   height: fit-content;
   position: sticky;
   top: 80px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
 }
 .filters h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
 
-.filter-group { margin-bottom: 20px; }
-.filter-label { font-size: 12px; font-weight: 700; color: var(--text-sub); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.filter-group { margin-bottom: 4px; }
+.filter-section-head { width: 100%; display: flex; justify-content: space-between; align-items: center; background: none; border: none; padding: 6px 0; cursor: pointer; font-family: inherit; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.filter-label-text { font-size: 12px; font-weight: 700; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; }
+.fsarrow { font-size: 10px; color: var(--text-sub); }
+.filter-body { padding-bottom: 8px; }
+
 .filter-option {
   display: flex;
   align-items: center;
@@ -405,6 +467,13 @@ function typeColor(t) {
   cursor: pointer;
 }
 .btn-block { width: 100%; margin-top: 4px; }
+
+/* Price range slider */
+.price-range-display { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--primary-dark); margin-bottom: 8px; }
+.range-wrap { position: relative; height: 32px; }
+.range-slider { position: absolute; width: 100%; top: 50%; transform: translateY(-50%); height: 4px; -webkit-appearance: none; appearance: none; background: transparent; outline: none; pointer-events: none; }
+.range-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary); cursor: pointer; pointer-events: all; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+.range-slider::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--primary); cursor: pointer; pointer-events: all; border: 2px solid #fff; }
 
 /* Amenity chips */
 .amenity-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -426,6 +495,7 @@ function typeColor(t) {
   transition: all var(--transition);
 }
 .hotel-card:hover { box-shadow: 0 6px 24px rgba(0,0,0,0.12); transform: translateY(-2px); }
+.ad-card { border: 2px solid #f59e0b; }
 
 .hotel-img {
   display: flex;
@@ -442,9 +512,17 @@ function typeColor(t) {
   top: 8px;
   left: 8px;
 }
+.pr-banner {
+  position: absolute; top: 0; right: 0;
+  background: #f59e0b; color: #fff;
+  font-size: 10px; font-weight: 800;
+  padding: 3px 8px; border-radius: 0 0 0 6px;
+  letter-spacing: 0.5px;
+}
 
 .hotel-body { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .hotel-name { font-size: 16px; font-weight: 700; }
+.pr-label { font-size: 11px; font-weight: 700; color: #f59e0b; margin-left: 6px; }
 .hotel-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .stars { color: #f59e0b; font-size: 13px; letter-spacing: 1px; }
 .rating { font-size: 13px; font-weight: 700; color: var(--text); }
@@ -531,7 +609,7 @@ function typeColor(t) {
 
 @media (max-width: 768px) {
   .list-layout { grid-template-columns: 1fr; }
-  .filters { position: static; }
+  .filters { position: static; max-height: none; }
   .hotel-card { grid-template-columns: 100px 1fr; }
   .hotel-img { min-height: 100px; }
   .hotel-emoji { font-size: 36px; }
