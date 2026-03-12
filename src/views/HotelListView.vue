@@ -1,5 +1,14 @@
 <template>
   <div class="hotel-list">
+    <!-- Loading overlay -->
+    <div v-if="isLoading" class="loading-overlay">
+      <div class="loading-card">
+        <div class="spinner"></div>
+        <p class="loading-text">{{ loadingMsg }}</p>
+        <p class="loading-sub">少々お待ちください</p>
+      </div>
+    </div>
+
     <div class="container">
       <!-- Transport summary bar (package flow) -->
       <div v-if="store.draft.mode === 'package' && store.draft.selectedTransport" class="transport-bar">
@@ -20,11 +29,12 @@
             <span v-if="nights > 0">（{{ nights }}泊）</span>
             　{{ store.draft.guests }}名
           </p>
+          <p v-if="!isLoading" class="result-count-header">{{ filteredHotels.length }}件の宿泊施設が見つかりました</p>
         </div>
         <div class="sort-row">
           <label class="sort-label">並び替え:</label>
           <select v-model="sortBy" class="sort-select">
-            <option value="default">人気順</option>
+            <option value="popular">人気順</option>
             <option value="price_asc">価格安い順</option>
             <option value="rating">評価順</option>
           </select>
@@ -35,6 +45,18 @@
         <!-- Filters -->
         <aside class="filters card">
           <h3>絞り込み</h3>
+
+          <div class="filter-group">
+            <div class="filter-label">エリア</div>
+            <label class="filter-option">
+              <input type="radio" v-model="filterArea" value="all" />
+              すべて
+            </label>
+            <label v-for="area in prefAreas" :key="area" class="filter-option">
+              <input type="radio" v-model="filterArea" :value="area" />
+              {{ area }}
+            </label>
+          </div>
 
           <div class="filter-group">
             <div class="filter-label">宿泊タイプ</div>
@@ -60,6 +82,19 @@
             </label>
           </div>
 
+          <div class="filter-group">
+            <div class="filter-label">設備・サービス</div>
+            <div class="amenity-chips">
+              <button
+                v-for="am in FILTER_AMENITIES"
+                :key="am"
+                class="amenity-chip"
+                :class="{ active: filterAmenities.includes(am) }"
+                @click="toggleAmenity(am)"
+              >{{ am }}</button>
+            </div>
+          </div>
+
           <button class="btn btn-secondary btn-block" @click="resetFilters">リセット</button>
         </aside>
 
@@ -67,13 +102,13 @@
         <div class="hotel-cards">
           <p class="result-count">{{ filteredHotels.length }}件の宿泊施設</p>
 
-          <div v-if="filteredHotels.length === 0" class="empty-state card">
+          <div v-if="filteredHotels.length === 0 && !isLoading" class="empty-state card">
             <p>条件に合う宿泊施設が見つかりませんでした。</p>
             <button class="btn btn-outline" @click="resetFilters">絞り込みをリセット</button>
           </div>
 
           <div
-            v-for="hotel in sortedHotels"
+            v-for="hotel in filteredHotels"
             :key="hotel.id"
             class="hotel-card card"
           >
@@ -107,10 +142,19 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { store } from '../store/index.js'
 import { getPrefById } from '../data/prefectures.js'
-import { getHotelsByPref, HOTELS } from '../data/hotels.js'
+import { getHotelsByPref } from '../data/hotels.js'
+
+const isLoading = ref(true)
+const loadingMsg = ref('宿泊施設を検索中...')
+
+onMounted(async () => {
+  const delay = 3000 + Math.random() * 7000
+  await new Promise(r => setTimeout(r, delay))
+  isLoading.value = false
+})
 
 const destPref   = computed(() => store.draft.destPrefId ? getPrefById(store.draft.destPrefId) : null)
 const originPref = computed(() => store.draft.originPrefId ? getPrefById(store.draft.originPrefId) : null)
@@ -121,58 +165,72 @@ const nights = computed(() => {
   return d > 0 ? d : 0
 })
 
+const pref = computed(() => getPrefById(Number(store.draft.destPrefId)))
+const prefAreas = computed(() => pref.value ? pref.value.areas : [])
+
 const allHotels = computed(() => {
-  if (store.draft.destPrefId) return getHotelsByPref(store.draft.destPrefId)
-  return HOTELS
+  if (!pref.value) return []
+  return getHotelsByPref(pref.value.id, pref.value.areas)
 })
 
 // Filters
-const filterType  = ref('all')
-const filterPrice = ref('all')
-const filterStars = ref('all')
-const sortBy      = ref('default')
+const filterType      = ref('all')
+const filterPrice     = ref('all')
+const filterStars     = ref(0)
+const filterAmenities = ref([])
+const filterArea      = ref('all')
+const sortBy          = ref('popular')
 
-const typeOptions  = [
-  { value: 'all',     label: 'すべて' },
-  { value: 'hotel',   label: 'ホテル' },
-  { value: 'ryokan',  label: '旅館' },
-  { value: 'resort',  label: 'リゾート' },
+const FILTER_AMENITIES = ['温泉', '大浴場', '露天風呂', 'サウナ', 'プール', 'スパ', 'レストラン', '朝食付き', 'フィットネス', 'ペット可', '無料送迎', '駐車場']
+
+const typeOptions = [
+  { value: 'all',    label: 'すべて' },
+  { value: 'hotel',  label: 'ホテル' },
+  { value: 'ryokan', label: '旅館' },
+  { value: 'resort', label: 'リゾート' },
 ]
 const priceOptions = [
-  { value: 'all',   label: 'すべて' },
-  { value: 'low',   label: '〜10,000円' },
-  { value: 'mid',   label: '10,000〜30,000円' },
-  { value: 'high',  label: '30,000円〜' },
+  { value: 'all',    label: 'すべて' },
+  { value: 'budget', label: '〜10,000円' },
+  { value: 'mid',    label: '10,000〜30,000円' },
+  { value: 'luxury', label: '30,000円〜' },
 ]
 const starOptions = [
-  { value: 'all', label: 'すべて' },
-  { value: '3',   label: '★★★以上' },
-  { value: '4',   label: '★★★★以上' },
+  { value: 0, label: 'すべて' },
+  { value: 3, label: '★★★以上' },
+  { value: 4, label: '★★★★以上' },
 ]
+
+function toggleAmenity(am) {
+  const idx = filterAmenities.value.indexOf(am)
+  if (idx >= 0) filterAmenities.value.splice(idx, 1)
+  else filterAmenities.value.push(am)
+}
 
 const filteredHotels = computed(() => {
   let list = allHotels.value
   if (filterType.value !== 'all') list = list.filter(h => h.type === filterType.value)
-  if (filterPrice.value === 'low')  list = list.filter(h => h.pricePerNight <= 10000)
-  if (filterPrice.value === 'mid')  list = list.filter(h => h.pricePerNight > 10000 && h.pricePerNight <= 30000)
-  if (filterPrice.value === 'high') list = list.filter(h => h.pricePerNight > 30000)
-  if (filterStars.value === '3')    list = list.filter(h => h.stars >= 3)
-  if (filterStars.value === '4')    list = list.filter(h => h.stars >= 4)
-  return list
-})
+  if (filterPrice.value === 'budget') list = list.filter(h => h.pricePerNight < 10000)
+  else if (filterPrice.value === 'mid') list = list.filter(h => h.pricePerNight >= 10000 && h.pricePerNight < 30000)
+  else if (filterPrice.value === 'luxury') list = list.filter(h => h.pricePerNight >= 30000)
+  if (filterStars.value > 0) list = list.filter(h => h.stars >= filterStars.value)
+  if (filterAmenities.value.length > 0) {
+    list = list.filter(h => filterAmenities.value.every(am => h.amenities.includes(am)))
+  }
+  if (filterArea.value !== 'all') list = list.filter(h => h.area === filterArea.value)
 
-const sortedHotels = computed(() => {
-  const list = [...filteredHotels.value]
-  if (sortBy.value === 'price_asc') list.sort((a,b) => a.pricePerNight - b.pricePerNight)
-  else if (sortBy.value === 'rating') list.sort((a,b) => b.rating - a.rating)
-  else list.sort((a,b) => b.rating - a.rating) // default by rating
+  if (sortBy.value === 'price_asc') list = [...list].sort((a, b) => a.pricePerNight - b.pricePerNight)
+  else if (sortBy.value === 'rating') list = [...list].sort((a, b) => b.rating - a.rating)
+
   return list
 })
 
 function resetFilters() {
   filterType.value = 'all'
   filterPrice.value = 'all'
-  filterStars.value = 'all'
+  filterStars.value = 0
+  filterAmenities.value = []
+  filterArea.value = 'all'
 }
 
 function typeLabel(t) {
@@ -188,6 +246,27 @@ function typeColor(t) {
 
 <style scoped>
 .hotel-list { padding: 28px 0 60px; }
+
+/* Loading overlay */
+.spinner {
+  width: 48px; height: 48px;
+  border: 4px solid #e2e8f0;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg) } }
+.loading-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; z-index: 200;
+}
+.loading-card {
+  background: white; border-radius: 16px; padding: 40px 48px; text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.loading-text { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.loading-sub { font-size: 13px; color: var(--text-sub); }
 
 .transport-bar {
   display: flex;
@@ -215,6 +294,7 @@ function typeColor(t) {
 }
 .list-title { font-size: 24px; font-weight: 800; }
 .list-sub { color: var(--text-sub); font-size: 14px; margin-top: 4px; }
+.result-count-header { font-size: 14px; color: var(--text-sub); margin-top: 6px; font-weight: 500; }
 
 .sort-row { display: flex; align-items: center; gap: 8px; }
 .sort-label { font-size: 13px; color: var(--text-sub); }
@@ -252,6 +332,16 @@ function typeColor(t) {
   cursor: pointer;
 }
 .btn-block { width: 100%; margin-top: 4px; }
+
+/* Amenity chips */
+.amenity-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.amenity-chip {
+  padding: 5px 10px; border-radius: 100px; border: 1px solid var(--border);
+  background: white; font-size: 12px; color: var(--text-sub); cursor: pointer;
+  transition: all 0.15s;
+}
+.amenity-chip:hover { border-color: var(--primary); color: var(--primary); }
+.amenity-chip.active { background: var(--primary); border-color: var(--primary); color: white; font-weight: 600; }
 
 .hotel-cards { display: flex; flex-direction: column; gap: 16px; }
 .result-count { font-size: 13px; color: var(--text-sub); margin-bottom: 8px; }
@@ -306,7 +396,7 @@ function typeColor(t) {
 
 @media (max-width: 768px) {
   .list-layout { grid-template-columns: 1fr; }
-  .filters { position: static; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+  .filters { position: static; }
   .hotel-card { grid-template-columns: 100px 1fr; }
   .hotel-img { min-height: 100px; }
   .hotel-emoji { font-size: 36px; }

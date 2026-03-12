@@ -1,5 +1,14 @@
 <template>
   <div class="package-view">
+    <!-- Loading overlay -->
+    <div v-if="isSearching" class="loading-overlay">
+      <div class="loading-card">
+        <div class="spinner"></div>
+        <p class="loading-text">空席・料金を検索中...</p>
+        <p class="loading-sub">少々お待ちください</p>
+      </div>
+    </div>
+
     <div class="container">
       <h1 class="page-title">交通 + 宿泊セット検索</h1>
       <p class="page-sub">移動手段と宿泊をまとめて手配できます</p>
@@ -68,7 +77,7 @@
             </div>
           </div>
 
-          <button class="btn btn-accent search-btn" @click="doSearch" :disabled="!canSearch">
+          <button class="btn btn-accent search-btn" @click="doSearch" :disabled="!canSearch || isSearching">
             空席・料金を検索
           </button>
           <p v-if="!canSearch" class="hint-text">出発地と目的地を選択してください</p>
@@ -76,7 +85,7 @@
       </div>
 
       <!-- Results -->
-      <div v-if="searched" class="results-section">
+      <div v-if="showResults" class="results-section">
         <h2>移動手段の選択</h2>
         <p class="results-sub">{{ originPref?.name }} → {{ destPref?.name }}　{{ store.draft.tripType === 'roundtrip' ? '（往復）' : '（片道）' }}</p>
 
@@ -112,7 +121,53 @@
           </div>
         </div>
 
-        <div v-if="store.draft.selectedTransport" class="next-bar">
+        <!-- Time slot selection -->
+        <div v-if="selectedOption" class="slots-section card">
+          <h3>{{ store.draft.tripType === 'roundtrip' ? '往路' : '出発時間' }}を選択</h3>
+          <div class="slots-grid">
+            <button
+              v-for="slot in outboundSlots"
+              :key="slot.id"
+              class="slot-btn"
+              :class="[`avail-${slot.availability}`, { selected: selectedOutSlot?.id === slot.id }]"
+              :disabled="slot.availability === 'sold_out'"
+              @click="selectedOutSlot = slot"
+            >
+              <div class="slot-time">{{ slot.departure }}<span class="arr">→ {{ slot.arrival }}</span></div>
+              <div class="slot-price">¥{{ slot.price.toLocaleString() }}</div>
+              <div class="slot-avail">
+                <span v-if="slot.availability === 'available'" class="badge-avail">○</span>
+                <span v-else-if="slot.availability === 'few'" class="badge-few">△ 残りわずか</span>
+                <span v-else class="badge-sold">✕ 満席</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- 復路 (roundtrip only, shown after outbound selected) -->
+          <template v-if="store.draft.tripType === 'roundtrip' && selectedOutSlot">
+            <h3 class="mt-24">復路を選択</h3>
+            <div class="slots-grid">
+              <button
+                v-for="slot in inboundSlots"
+                :key="slot.id"
+                class="slot-btn"
+                :class="[`avail-${slot.availability}`, { selected: selectedInSlot?.id === slot.id }]"
+                :disabled="slot.availability === 'sold_out'"
+                @click="selectedInSlot = slot"
+              >
+                <div class="slot-time">{{ slot.departure }}<span class="arr">→ {{ slot.arrival }}</span></div>
+                <div class="slot-price">¥{{ slot.price.toLocaleString() }}</div>
+                <div class="slot-avail">
+                  <span v-if="slot.availability === 'available'" class="badge-avail">○</span>
+                  <span v-else-if="slot.availability === 'few'" class="badge-few">△ 残りわずか</span>
+                  <span v-else class="badge-sold">✕ 満席</span>
+                </div>
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <div v-if="canProceed" class="next-bar">
           <div class="next-info">
             <span class="sel-type">{{ selectedTransportLabel }}</span> を選択しました
           </div>
@@ -128,11 +183,15 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { store } from '../store/index.js'
 import { getPrefById } from '../data/prefectures.js'
-import { getTransportOptions, formatDuration } from '../data/transport.js'
+import { getTransportOptions, generateTimeSlots, formatDuration } from '../data/transport.js'
 
 const router = useRouter()
-const searched = ref(false)
-const allOptions = ref([])
+const isSearching = ref(false)
+const showResults = ref(false)
+const transportOptions = ref([])
+const selectedOption = ref(null)
+const selectedOutSlot = ref(null)
+const selectedInSlot = ref(null)
 
 const today = new Date().toLocaleDateString('sv-SE')
 if (!store.draft.checkin) store.draft.checkin = today
@@ -143,12 +202,29 @@ const destPref   = computed(() => store.draft.destPrefId   ? getPrefById(store.d
 const canSearch  = computed(() => !!store.draft.originPrefId && !!store.draft.destPrefId)
 
 const filteredOptions = computed(() => {
-  if (store.draft.transportType === 'any') return allOptions.value
-  return allOptions.value.filter(o => o.type === store.draft.transportType)
+  if (store.draft.transportType === 'any') return transportOptions.value
+  return transportOptions.value.filter(o => o.type === store.draft.transportType)
+})
+
+const outboundSlots = computed(() => {
+  if (!selectedOption.value) return []
+  return generateTimeSlots(selectedOption.value.type, store.draft.originPrefId, store.draft.destPrefId, store.draft.checkin)
+})
+
+const inboundSlots = computed(() => {
+  if (!selectedOption.value) return []
+  return generateTimeSlots(selectedOption.value.type, store.draft.destPrefId, store.draft.originPrefId, store.draft.checkout)
+})
+
+const canProceed = computed(() => {
+  if (!selectedOption.value) return false
+  if (!selectedOutSlot.value) return false
+  if (store.draft.tripType === 'roundtrip' && !selectedInSlot.value) return false
+  return true
 })
 
 const selectedTransportLabel = computed(() => {
-  const t = store.draft.selectedTransport
+  const t = selectedOption.value
   if (!t) return ''
   if (t.type === 'flight') return '飛行機'
   if (t.type === 'shinkansen') return t.line + '新幹線'
@@ -160,24 +236,40 @@ function changeGuests(d) {
   if (v >= 1 && v <= 8) store.draft.guests = v
 }
 
-function doSearch() {
+async function doSearch() {
   if (!canSearch.value) return
-  allOptions.value = getTransportOptions(store.draft.originPrefId, store.draft.destPrefId)
-  store.draft.selectedTransport = null
-  searched.value = true
+  isSearching.value = true
+  showResults.value = false
+  selectedOption.value = null
+  selectedOutSlot.value = null
+  selectedInSlot.value = null
+
+  // Random delay 3000-7000ms
+  const delay = 3000 + Math.random() * 4000
+  await new Promise(r => setTimeout(r, delay))
+
+  transportOptions.value = getTransportOptions(store.draft.originPrefId, store.draft.destPrefId)
+  isSearching.value = false
+  showResults.value = true
 }
 
 function isSelected(opt) {
-  const t = store.draft.selectedTransport
-  if (!t) return false
-  return t.type === opt.type && t.line === opt.line
+  if (!selectedOption.value) return false
+  return selectedOption.value.type === opt.type && selectedOption.value.line === opt.line
 }
 
 function selectTransport(opt) {
-  store.draft.selectedTransport = opt
+  selectedOption.value = opt
+  selectedOutSlot.value = null
+  selectedInSlot.value = null
 }
 
 function goToHotels() {
+  store.draft.selectedTransport = {
+    ...selectedOption.value,
+    outbound: selectedOutSlot.value,
+    inbound: selectedInSlot.value,
+  }
   store.draft.mode = 'package'
   router.push('/hotels')
 }
@@ -294,6 +386,36 @@ function goToHotels() {
 
 .empty-state { padding: 32px; text-align: center; }
 
+/* Time slots */
+.slots-section { padding: 24px; margin-top: 24px; }
+.slots-section h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.mt-24 { margin-top: 24px; }
+
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.slot-btn {
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background: white;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.slot-btn:hover:not(:disabled) { border-color: var(--primary); }
+.slot-btn.selected { border-color: var(--primary); background: #e0f2fe; }
+.slot-btn:disabled { opacity: 0.45; cursor: not-allowed; background: #f1f5f9; }
+.slot-time { font-size: 15px; font-weight: 700; }
+.arr { font-size: 12px; font-weight: 400; color: var(--text-sub); display: block; }
+.slot-price { font-size: 13px; color: var(--primary-dark, var(--primary)); font-weight: 600; margin: 4px 0; }
+.badge-avail { color: #16a34a; font-weight: 700; }
+.badge-few { color: #d97706; font-size: 12px; }
+.badge-sold { color: #dc2626; font-size: 12px; }
+
 .next-bar {
   display: flex;
   align-items: center;
@@ -308,8 +430,30 @@ function goToHotels() {
 .sel-type { font-weight: 700; color: var(--accent); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Loading overlay */
+.spinner {
+  width: 48px; height: 48px;
+  border: 4px solid #e2e8f0;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg) } }
+.loading-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; z-index: 200;
+}
+.loading-card {
+  background: white; border-radius: 16px; padding: 40px 48px; text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.loading-text { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.loading-sub { font-size: 13px; color: var(--text-sub); }
+
 @media (max-width: 640px) {
   .transport-card { flex-wrap: wrap; }
   .arrow-center { display: none; }
+  .slots-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
 }
 </style>
