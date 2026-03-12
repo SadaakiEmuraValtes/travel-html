@@ -8,6 +8,7 @@
           <router-link to="/" @click="menuOpen = false">ホーム</router-link>
           <router-link to="/hotels" @click="menuOpen = false">宿泊を探す</router-link>
           <router-link to="/package" @click="menuOpen = false">交通+宿泊</router-link>
+          <router-link to="/help" @click="menuOpen = false">ヘルプ・免責</router-link>
         </nav>
 
         <div class="nav-right">
@@ -27,13 +28,25 @@
       </div>
     </header>
 
+    <!-- 免責バナー -->
+    <div class="disclaimer-bar">
+      <span>⚠️</span>
+      <span>このサイトは<strong>自動化テスト練習用のデモサイト</strong>です。実際の予約・決済は行いません。</span>
+      <router-link to="/help" class="disc-link">詳細 →</router-link>
+    </div>
+
     <main class="main-content">
       <router-view />
     </main>
 
     <footer class="footer">
-      <div class="container">
-        <p>© 2025 JAPAN TRAVEL Demo &mdash; このサービスはデモです。実際の予約・決済は行いません。</p>
+      <div class="container footer-inner">
+        <p class="footer-copy">© 2025 JAPAN TRAVEL Demo</p>
+        <div class="footer-links">
+          <router-link to="/help">ヘルプ・免責事項</router-link>
+          <span>|</span>
+          <span>このサービスは自動化テスト練習用の架空デモです。実際の予約・決済は行いません。</span>
+        </div>
       </div>
     </footer>
   </div>
@@ -139,16 +152,57 @@ function handleLogout() {
   transition: var(--transition);
 }
 
+.disclaimer-bar {
+  background: #fef9c3;
+  border-bottom: 1px solid #fde047;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #713f12;
+  flex-wrap: wrap;
+  text-align: center;
+}
+.disclaimer-bar strong { font-weight: 700; }
+.disc-link {
+  color: #92400e;
+  font-weight: 600;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.disc-link:hover { color: #78350f; }
+
 .main-content { flex: 1; }
 
 .footer {
   background: #0f172a;
   color: #94a3b8;
-  padding: 16px 0;
-  text-align: center;
+  padding: 20px 0;
   font-size: 12px;
   margin-top: 40px;
 }
+.footer-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.footer-copy { font-weight: 600; color: #cbd5e1; }
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.footer-links a {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+.footer-links a:hover { color: #fff; }
 
 @media (max-width: 768px) {
   .hamburger { display: flex; }

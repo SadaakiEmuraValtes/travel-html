@@ -9,6 +9,7 @@ import ConfirmView from '../views/ConfirmView.vue'
 import CompleteView from '../views/CompleteView.vue'
 import MyPageView from '../views/MyPageView.vue'
 import LoginView from '../views/LoginView.vue'
+import HelpView from '../views/HelpView.vue'
 
 const routes = [
   { path: '/',         name: 'home',        component: HomeView },
@@ -20,6 +21,7 @@ const routes = [
   { path: '/complete', name: 'complete',    component: CompleteView },
   { path: '/my-page',  name: 'myPage',      component: MyPageView, meta: { requiresAuth: true } },
   { path: '/login',    name: 'login',       component: LoginView },
+  { path: '/help',     name: 'help',        component: HelpView },
 ]
 
 const router = createRouter({
