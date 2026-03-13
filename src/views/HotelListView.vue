@@ -354,13 +354,12 @@ const filteredHotels = computed(() => {
   return list
 })
 
-// PR/Ad injection — PR hotels float to top (with PR badge), duplicated in normal position
+// PR/Ad injection — PR hotels appear at top with [PR] badge, AND also in their normal position
 const displayHotels = computed(() => {
   const list = filteredHotels.value
   const adHotels = list.filter(h => h.isAd).map(h => ({ ...h, isPr: true }))
   if (adHotels.length === 0) return list
-  const nonAd = list.filter(h => !h.isAd)
-  return [...adHotels, ...nonAd]
+  return [...adHotels, ...list]
 })
 
 function applyFilters() {
