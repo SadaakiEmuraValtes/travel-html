@@ -2,7 +2,7 @@
   <div id="app-wrapper">
     <header class="navbar">
       <div class="container nav-inner">
-        <router-link to="/" class="logo">🗾 JAPAN TRAVEL</router-link>
+        <a href="https://sadaakiemuravaltes.github.io/travel-html/" class="logo">🗾 JAPAN TRAVEL</a>
 
         <nav class="nav-links" :class="{ open: menuOpen }">
           <router-link to="/" @click="menuOpen = false">ホーム</router-link>
