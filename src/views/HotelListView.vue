@@ -354,12 +354,13 @@ const filteredHotels = computed(() => {
   return list
 })
 
-// PR/Ad injection — PR hotels appear at top with [PR] badge, AND also in their normal position
+// PR/Ad injection — 1件をランダム選択して先頭に[PR]表示、通常位置にも重複表示
 const displayHotels = computed(() => {
   const list = filteredHotels.value
-  const adHotels = list.filter(h => h.isAd).map(h => ({ ...h, isPr: true }))
+  const adHotels = list.filter(h => h.isAd)
   if (adHotels.length === 0) return list
-  return [...adHotels, ...list]
+  const picked = { ...adHotels[Math.floor(Math.random() * adHotels.length)], isPr: true }
+  return [picked, ...list]
 })
 
 function applyFilters() {
