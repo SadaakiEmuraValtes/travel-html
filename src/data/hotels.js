@@ -76,6 +76,42 @@ export function getAreaCount(prefId, areaIdx) {
   return counts[areaIdx] !== undefined ? counts[areaIdx] : (counts[counts.length - 1] || 10)
 }
 
+// id = prefId * 100000 + areaIdx * 1000 + hotelIndex
+const PR_HOTEL_IDS = new Set([
+  // 東京(13) — 複数
+  1300000, 1300001, 1300002,  // 都心エリア
+  1301000, 1301001,           // エリア2
+  // 大阪(27) — 複数
+  2700000, 2700001, 2700002,
+  2701000, 2701001,
+  // 京都(26) — 複数
+  2600000, 2600001, 2600002,
+  2601000, 2601001,
+  // 福岡(40) — 複数
+  4000000, 4000001, 4000002,
+  4001000, 4001001,
+  // 北海道(1)
+  100000, 100001,
+  // 宮城(4)
+  400000, 400001,
+  // 神奈川(14)
+  1400000, 1401000,
+  // 愛知(23)
+  2300000, 2300001,
+  // 兵庫(28)
+  2800000, 2801000,
+  // 広島(34)
+  3400000, 3400001,
+  // 長野(20)
+  2000000, 2001000,
+  // 静岡(22)
+  2200000, 2201000,
+  // 大分(44)
+  4400000, 4401000,
+  // 沖縄(47)
+  4700000, 4700001, 4701000,
+])
+
 export function generateHotel(prefId, areaIdx, areaName, hotelIndex) {
   const id = prefId * 100000 + areaIdx * 1000 + hotelIndex
   const rand = makeRand(id + 7919)
@@ -126,8 +162,7 @@ export function generateHotel(prefId, areaIdx, areaName, hotelIndex) {
   const descList = DESCRIPTIONS[type]
   const description = descList[Math.floor(rand() * descList.length)]
 
-  const adRand = makeRand(prefId * 999 + areaIdx * 77 + hotelIndex + 12345)
-  const isAd = adRand() < 0.05
+  const isAd = PR_HOTEL_IDS.has(id)
 
   return { id, prefId, areaIdx, area: areaName, name, type, stars, pricePerNight, amenities, description, emoji, rating, isAd }
 }

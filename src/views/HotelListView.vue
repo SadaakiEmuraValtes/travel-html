@@ -1,17 +1,18 @@
 <template>
   <div class="hotel-list">
-    <!-- Loading overlay -->
-    <div v-if="isLoading" class="loading-overlay">
-      <div class="loading-card">
-        <div class="spinner"></div>
-        <p class="loading-text">{{ loadingMsg }}</p>
-        <p class="loading-sub">少々お待ちください</p>
+    <!-- Filter loading modal -->
+    <Transition name="fl">
+      <div v-if="filterLoading" class="filter-modal-overlay">
+        <div class="filter-modal-card">
+          <span class="filter-hourglass">⏳</span>
+          <p class="filter-modal-text">絞り込み中…</p>
+        </div>
       </div>
-    </div>
+    </Transition>
 
     <div class="container">
       <!-- Breadcrumb -->
-      <nav v-if="destPref && !isLoading" class="breadcrumb-nav" aria-label="パンくずリスト">
+      <nav v-if="destPref" class="breadcrumb-nav" aria-label="パンくずリスト">
         <router-link to="/" class="bc-link">ホーム</router-link>
         <span class="bc-sep">›</span>
         <router-link :to="`/search?mode=dest&region=${destPref.regionId}`" class="bc-link">{{ regionName }}</router-link>
@@ -151,20 +152,34 @@
 
         <!-- Hotel Cards -->
         <div class="hotel-cards">
-          <p class="result-count">
+          <p v-if="!isLoading" class="result-count">
             {{ filteredHotels.length }}件の宿泊施設
-            <span v-if="!isLoading && filteredHotels.length > 0">
+            <span v-if="filteredHotels.length > 0">
               （{{ (currentPage - 1) * PAGE_SIZE + 1 }}〜{{ Math.min(currentPage * PAGE_SIZE, displayHotels.length) }}件表示）
             </span>
           </p>
 
-          <div v-if="filteredHotels.length === 0 && !isLoading" class="empty-state card">
-            <p>条件に合う宿泊施設が見つかりませんでした。</p>
-            <button class="btn btn-outline" @click="resetFilters">絞り込みをリセット</button>
-          </div>
+          <!-- Initial skeleton -->
+          <template v-if="isLoading">
+            <div v-for="n in 4" :key="n" class="hotel-card card">
+              <div class="sk-img sk-anim"></div>
+              <div class="hotel-body">
+                <div class="sk-line sk-anim" style="width:65%;height:18px;margin-bottom:10px"></div>
+                <div class="sk-line sk-anim" style="width:45%;height:12px;margin-bottom:8px"></div>
+                <div class="sk-line sk-anim" style="width:80%;height:12px;margin-bottom:8px"></div>
+                <div class="sk-line sk-anim" style="width:40%;height:22px;margin-top:auto"></div>
+              </div>
+            </div>
+          </template>
 
-          <div
-            v-for="hotel in pagedHotels"
+          <template v-else>
+            <div v-if="filteredHotels.length === 0" class="empty-state card">
+              <p>条件に合う宿泊施設が見つかりませんでした。</p>
+              <button class="btn btn-outline" @click="resetFilters">絞り込みをリセット</button>
+            </div>
+
+            <div
+              v-for="hotel in pagedHotels"
             :key="hotel.isPr ? 'pr-' + hotel.id : hotel.id"
             class="hotel-card card"
             :class="{ 'ad-card': hotel.isPr }"
@@ -190,36 +205,50 @@
               <div class="hotel-footer">
                 <div class="price">
                   <span class="price-val">¥{{ hotel.pricePerNight.toLocaleString() }}</span>
-                  <span class="price-unit">/泊</span>
+                  <span class="price-unit">/泊〜</span>
+                  <span v-if="nights > 0" class="price-total">
+                    （{{ nights }}泊 ¥{{ (hotel.pricePerNight * nights).toLocaleString() }}〜）
+                  </span>
+                  <span v-else class="price-nodates">日程未指定</span>
                 </div>
-                <router-link :to="`/hotel/${hotel.id}`" class="btn btn-primary detail-btn">詳細を見る</router-link>
+                <div class="card-actions">
+                  <button
+                    v-if="isLoggedIn()"
+                    class="fav-btn"
+                    :class="{ active: isFavorite(hotel.id) }"
+                    @click.prevent="toggleFavorite(hotel.id)"
+                    :title="isFavorite(hotel.id) ? 'お気に入りから削除' : 'お気に入りに追加'"
+                  >{{ isFavorite(hotel.id) ? '♥' : '♡' }}</button>
+                  <router-link :to="`/hotel/${hotel.id}`" class="btn btn-primary detail-btn">詳細を見る</router-link>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Pagination -->
-          <div v-if="totalPages > 1" class="pagination">
-            <button
-              class="page-btn page-nav"
-              :disabled="currentPage <= 1"
-              @click="currentPage--; scrollToTop()"
-            >‹ 前へ</button>
-
-            <template v-for="(p, i) in pageNumbers" :key="p">
-              <span v-if="i > 0 && pageNumbers[i-1] + 1 < p" class="page-ellipsis">…</span>
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="pagination">
               <button
-                class="page-btn"
-                :class="{ active: p === currentPage }"
-                @click="currentPage = p; scrollToTop()"
-              >{{ p }}</button>
-            </template>
+                class="page-btn page-nav"
+                :disabled="currentPage <= 1"
+                @click="currentPage--; scrollToTop()"
+              >‹ 前へ</button>
 
-            <button
-              class="page-btn page-nav"
-              :disabled="currentPage >= totalPages"
-              @click="currentPage++; scrollToTop()"
-            >次へ ›</button>
-          </div>
+              <template v-for="(p, i) in pageNumbers" :key="p">
+                <span v-if="i > 0 && pageNumbers[i-1] + 1 < p" class="page-ellipsis">…</span>
+                <button
+                  class="page-btn"
+                  :class="{ active: p === currentPage }"
+                  @click="currentPage = p; scrollToTop()"
+                >{{ p }}</button>
+              </template>
+
+              <button
+                class="page-btn page-nav"
+                :disabled="currentPage >= totalPages"
+                @click="currentPage++; scrollToTop()"
+              >次へ ›</button>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -228,12 +257,12 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { store } from '../store/index.js'
+import { store, isLoggedIn, toggleFavorite, isFavorite } from '../store/index.js'
 import { REGIONS, getPrefById } from '../data/prefectures.js'
 import { getHotelsByPref } from '../data/hotels.js'
 
-const isLoading = ref(true)
-const loadingMsg = ref('宿泊施設を検索中...')
+const isLoading    = ref(true)
+const filterLoading = ref(false)
 
 onMounted(async () => {
   const delay = 2000 + Math.random() * 3000
@@ -258,7 +287,7 @@ const allHotels = computed(() => {
   return getHotelsByPref(pref.value.id, pref.value.areas)
 })
 
-// Filters
+// ── UI filter state (what the user sees/clicks) ──
 const filterType      = ref('all')
 const priceMin        = ref(0)
 const priceMax        = ref(100000)
@@ -267,8 +296,17 @@ const filterAmenities = ref([])
 const filterArea      = ref('all')
 const sortBy          = ref('popular')
 
-// Accordion state
-const openSections = ref(new Set(['area', 'type', 'price', 'stars', 'amenity']))
+// ── Active filter state (what's actually applied to results) ──
+const activeType      = ref('all')
+const activeMin       = ref(0)
+const activeMax       = ref(100000)
+const activeStars     = ref(0)
+const activeAmenities = ref([])
+const activeArea      = ref('all')
+const activeSort      = ref('popular')
+
+// Accordion state — amenity closed by default
+const openSections = ref(new Set(['area', 'type', 'price', 'stars']))
 function toggleSection(key) {
   if (openSections.value.has(key)) openSections.value.delete(key)
   else openSections.value.add(key)
@@ -297,42 +335,64 @@ function toggleAmenity(am) {
   else filterAmenities.value.push(am)
 }
 
+// filteredHotels reads from ACTIVE state only
 const filteredHotels = computed(() => {
   let list = allHotels.value
-  if (filterType.value !== 'all') list = list.filter(h => h.type === filterType.value)
-  if (priceMin.value > 0 || priceMax.value < 100000) {
-    list = list.filter(h => h.pricePerNight >= priceMin.value && h.pricePerNight <= priceMax.value)
+  if (activeType.value !== 'all') list = list.filter(h => h.type === activeType.value)
+  if (activeMin.value > 0 || activeMax.value < 100000) {
+    list = list.filter(h => h.pricePerNight >= activeMin.value && h.pricePerNight <= activeMax.value)
   }
-  if (filterStars.value > 0) list = list.filter(h => h.stars >= filterStars.value)
-  if (filterAmenities.value.length > 0) {
-    list = list.filter(h => filterAmenities.value.every(am => h.amenities.includes(am)))
+  if (activeStars.value > 0) list = list.filter(h => h.stars >= activeStars.value)
+  if (activeAmenities.value.length > 0) {
+    list = list.filter(h => activeAmenities.value.every(am => h.amenities.includes(am)))
   }
-  if (filterArea.value !== 'all') list = list.filter(h => h.area === filterArea.value)
+  if (activeArea.value !== 'all') list = list.filter(h => h.area === activeArea.value)
 
-  if (sortBy.value === 'price_asc') list = [...list].sort((a, b) => a.pricePerNight - b.pricePerNight)
-  else if (sortBy.value === 'rating') list = [...list].sort((a, b) => b.rating - a.rating)
+  if (activeSort.value === 'price_asc') list = [...list].sort((a, b) => a.pricePerNight - b.pricePerNight)
+  else if (activeSort.value === 'rating') list = [...list].sort((a, b) => b.rating - a.rating)
 
   return list
 })
 
-// PR/Ad injection
+// PR/Ad injection — PR hotels float to top (with PR badge), duplicated in normal position
 const displayHotels = computed(() => {
   const list = filteredHotels.value
-  const adIdx = list.findIndex(h => h.isAd)
-  if (adIdx < 0) return list
-  const adHotel = list[adIdx]
-  const withoutAd = list.filter((_, i) => i !== adIdx)
-  return [{ ...adHotel, isPr: true }, ...withoutAd]
+  const adHotels = list.filter(h => h.isAd).map(h => ({ ...h, isPr: true }))
+  if (adHotels.length === 0) return list
+  const nonAd = list.filter(h => !h.isAd)
+  return [...adHotels, ...nonAd]
 })
 
-function resetFilters() {
-  filterType.value = 'all'
-  priceMin.value = 0
-  priceMax.value = 100000
-  filterStars.value = 0
-  filterAmenities.value = []
-  filterArea.value = 'all'
+function applyFilters() {
+  activeType.value      = filterType.value
+  activeMin.value       = priceMin.value
+  activeMax.value       = priceMax.value
+  activeStars.value     = filterStars.value
+  activeAmenities.value = [...filterAmenities.value]
+  activeArea.value      = filterArea.value
+  activeSort.value      = sortBy.value
 }
+
+function resetFilters() {
+  filterType.value = 'all'; priceMin.value = 0; priceMax.value = 100000
+  filterStars.value = 0; filterAmenities.value = []; filterArea.value = 'all'
+  // Apply immediately on reset
+  activeType.value = 'all'; activeMin.value = 0; activeMax.value = 100000
+  activeStars.value = 0; activeAmenities.value = []; activeArea.value = 'all'
+}
+
+// ── Filter loading: show loading BEFORE applying results ──
+let filterTimer = null
+function triggerFilterLoad() {
+  if (isLoading.value) return
+  filterLoading.value = true
+  clearTimeout(filterTimer)
+  filterTimer = setTimeout(() => {
+    applyFilters()
+    filterLoading.value = false
+  }, 600)
+}
+watch([filterType, priceMin, priceMax, filterStars, filterAmenities, filterArea, sortBy], triggerFilterLoad, { deep: true })
 
 // ── Pagination ──
 const PAGE_SIZE = 10
@@ -376,26 +436,52 @@ function typeColor(t) {
 <style scoped>
 .hotel-list { padding: 28px 0 60px; }
 
-/* Loading overlay */
-.spinner {
-  width: 48px; height: 48px;
-  border: 4px solid #e2e8f0;
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto 16px;
+/* Skeleton */
+.sk-img {
+  width: 140px; min-height: 140px;
+  background: #e2e8f0; flex-shrink: 0;
 }
-@keyframes spin { to { transform: rotate(360deg) } }
-.loading-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-  display: flex; align-items: center; justify-content: center; z-index: 200;
+.sk-line {
+  border-radius: 6px;
+  background: #e2e8f0;
 }
-.loading-card {
-  background: white; border-radius: 16px; padding: 40px 48px; text-align: center;
+@keyframes skShimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.sk-anim {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 800px 100%;
+  animation: skShimmer 1.4s infinite;
+}
+
+/* Filter loading modal */
+.filter-modal-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: all;
+}
+.filter-modal-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 40px 56px;
+  text-align: center;
   box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
 }
-.loading-text { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
-.loading-sub { font-size: 13px; color: var(--text-sub); }
+.filter-hourglass {
+  font-size: 48px;
+  animation: hgSpin 0.8s steps(2, end) infinite;
+}
+.filter-modal-text {
+  font-size: 14px; color: var(--text-sub); font-weight: 500; margin: 0;
+}
+@keyframes hgSpin { to { transform: rotate(180deg); } }
+
+.fl-enter-active { transition: opacity 0.12s; }
+.fl-leave-active { transition: opacity 0.2s; }
+.fl-enter-from, .fl-leave-to { opacity: 0; }
 
 .transport-bar {
   display: flex;
@@ -540,7 +626,19 @@ function typeColor(t) {
 .hotel-footer { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
 .price-val { font-size: 22px; font-weight: 800; color: var(--primary); }
 .price-unit { font-size: 12px; color: var(--text-sub); margin-left: 2px; }
+.price-total { font-size: 11px; color: var(--text-sub); margin-left: 4px; }
+.price-nodates { font-size: 10px; background: #f1f5f9; color: var(--text-sub); border-radius: 4px; padding: 1px 6px; margin-left: 4px; }
 
+.card-actions { display: flex; align-items: center; gap: 8px; }
+.fav-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 1.5px solid #fca5a5; background: #fff;
+  font-size: 18px; cursor: pointer; color: #fca5a5;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; flex-shrink: 0;
+}
+.fav-btn:hover { border-color: #ef4444; color: #ef4444; background: #fef2f2; }
+.fav-btn.active { color: #ef4444; border-color: #ef4444; background: #fef2f2; }
 .detail-btn { padding: 8px 18px; font-size: 13px; }
 
 .empty-state { padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
